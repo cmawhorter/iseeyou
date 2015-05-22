@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="https://cdn.jsdelivr.net/async/1.0.0/async.js"></script>
+<script src="data/images.js"></script>
+</head>
+<body>
+<p>Open console for output.  Be warned... it can take a long while to complete and appear to hang at the end. (A very long while -- FF took a few minutes. Timeouts?)</p>
+<p>If for some reason it doesn't complete, the raw results are stored in `rawResults`.  Key: true=visited, false=not visited, null=could not test for some reason.</p>
+<button onclick="doit();">Do It</button>
+
+<script>
+// How many tests should we run from the images.js dataset
+var LIMIT = Infinity;
+
+// Simultaneous tests
+var CONCURRENCY = 20;
+
+// If an image loads successfully < THRESHOLD then it's cached.
+//    Too high will yield false positives
+//    Too low could yield false negatives
+var THRESHOLD = 40;
+
+// Makes a request to the google logo with the cache key appended to determine if we've run before
+var CACHE_KEY = 'iseeyou-1234567890';
+
+// ============================================================
+// ============================================================
+
+var rawResults = {};
+
+function check(siteName, logoUrl, callback) {
+  var img = new Image();
+  var startTime = new Date().getTime();
+  img.onload = function() {
+    var elapsed = new Date().getTime() - startTime;
+    if (elapsed < THRESHOLD) {
+      console.debug('Visited. %s; Took: %s seconds', siteName, (elapsed / 1000).toFixed(1));
+      rawResults[siteName] = true;
+      callback(null, true);
+    }
+    else {
+      console.debug('Not Visited. %s; Took: %s seconds', siteName, (elapsed / 1000).toFixed(1));
+      rawResults[siteName] = false;
+      callback(null, false);
+    }
+  };
+  img.onerror = function() {
+    var elapsed = new Date().getTime() - startTime;
+    console.debug('Unknown. %s; Took: %s seconds', siteName, (elapsed / 1000).toFixed(1));
+    rawResults[siteName] = null;
+    callback(null, null); // unknown
+  };
+  // FIXME: this could be better
+  if (logoUrl[0] !== 'h') {
+    logoUrl = 'https:' + logoUrl;
+  }
+  console.log('checking %s => ', siteName, logoUrl);
+  img.src = logoUrl;
+}
+
+var tasks = [];
+for (var siteName in IMAGE_DATA) {
+  var logoUrl = IMAGE_DATA[siteName];
+  tasks.push(async.apply(check, siteName, logoUrl));
+  if (tasks.length >= LIMIT) {
+    break;
+  }
+}
+
+function doit() {
+  check('if.already.run', 'https://www.google.com/images/srpr/logo11w.png?' + CACHE_KEY, function(err, visited) {
+    if (err || !visited) {
+      async.parallelLimit(tasks, CONCURRENCY, function(err, results) {
+        if (err) throw err;
+        Object.keys(IMAGE_DATA).forEach(function(siteName, index) {
+          if (void 0 === results[index]) {
+            console.debug('%s skipped', siteName);
+          }
+          else {
+            console[results[index] ? 'info' : 'log']('%s visited? %s', siteName, results[index] ? 'Yes' : (results[index] === false ? 'no' : 'unknown'));
+          }
+        });
+      });
+    }
+    else {
+      console.error('Already run.  Won\'t run again.  Change CACHE_KEY to avoid this.');
+    }
+  });
+}
+</script>
+</body>
+</html>
